@@ -3,95 +3,158 @@ import { historyService } from "../services/historyService";
 import { HistoryFilter } from "../db/models/HistoryModel";
 import { ValidationError, NotFoundError } from "../errors/AppError";
 import { asyncHandler } from "../middleware/errorHandler";
+import {
+  validateSearchParams,
+  validateDateRange,
+  validateHistoryType,
+  validateHistoryId
+} from "../middleware/validation";
+import {
+  SearchParams,
+  DateRangeParams,
+  HistoryTypeParams,
+  HistoryIdParams,
+  HistoryResponse,
+  HistoryEntryResponse,
+  SearchResponse
+} from "../types/api";
 
 const router = Router();
 
-interface SearchQueryParams {
-  q?: string;
-  from?: string;
-  to?: string;
-}
-
-interface DateRangeQueryParams {
-  from?: string;
-  to?: string;
-}
-
-function parseDateRange(params: DateRangeQueryParams): Partial<HistoryFilter> {
+function parseDateRange(params: Partial<DateRangeParams>): Partial<HistoryFilter> {
   const filter: Partial<HistoryFilter> = {};
   
   if (params.from) {
-    const fromDate = new Date(params.from);
-    if (isNaN(fromDate.getTime())) {
-      throw new ValidationError(`Invalid 'from' date: ${params.from}`);
-    }
-    filter.from = fromDate;
+    filter.from = new Date(params.from);
   }
   
   if (params.to) {
-    const toDate = new Date(params.to);
-    if (isNaN(toDate.getTime())) {
-      throw new ValidationError(`Invalid 'to' date: ${params.to}`);
-    }
-    filter.to = toDate;
+    filter.to = new Date(params.to);
   }
   
   return filter;
 }
 
-router.get("/search", asyncHandler(async (req: Request<{}, {}, {}, SearchQueryParams>, res: Response) => {
-  const { q, from, to } = req.query;
+router.get(
+  "/search",
+  validateSearchParams,
+  asyncHandler(async (
+    req: Request<{}, SearchResponse, {}, SearchParams>,
+    res: Response<SearchResponse>
+  ) => {
+    const { q, from, to } = req.query;
+    const dateFilter = parseDateRange({ from, to });
+    
+    const [results, total] = await Promise.all([
+      historyService.getHistory({
+        searchQuery: q,
+        ...dateFilter
+      }),
+      historyService.getHistoryCount({
+        searchQuery: q,
+        ...dateFilter
+      })
+    ]);
 
-  if (!q || typeof q !== "string" || q.trim().length < 2) {
-    throw new ValidationError("Query string 'q' is required and must be at least 2 characters.");
-  }
+    const limit = 50;
+    const offset = 0;
 
-  const dateFilter = parseDateRange({ from, to });
-  const results = await historyService.getHistory({
-    searchQuery: q,
-    ...dateFilter
-  });
-  res.json(results);
-}));
+    res.json({
+      data: results,
+      pagination: {
+        total,
+        limit,
+        offset,
+        hasMore: total > offset + limit
+      }
+    });
+  })
+);
 
-router.get("/", asyncHandler(async (req: Request<{}, {}, {}, DateRangeQueryParams>, res: Response) => {
-  const { from, to } = req.query;
-  const dateFilter = parseDateRange({ from, to });
-  const results = await historyService.getHistory(dateFilter);
-  res.json(results);
-}));
+router.get(
+  "/",
+  validateDateRange,
+  asyncHandler(async (
+    req: Request<{}, HistoryResponse, {}, DateRangeParams>,
+    res: Response<HistoryResponse>
+  ) => {
+    const { from, to } = req.query;
+    const dateFilter = parseDateRange({ from, to });
+    
+    const [results, total] = await Promise.all([
+      historyService.getHistory(dateFilter),
+      historyService.getHistoryCount(dateFilter)
+    ]);
 
-router.get("/:type", asyncHandler(async (
-  req: Request<{ type: string }, {}, {}, DateRangeQueryParams>,
-  res: Response
-) => {
-  const { type } = req.params;
-  const { from, to } = req.query;
+    const limit = 50;
+    const offset = 0;
 
-  if (!["comment", "test", "analysis"].includes(type)) {
-    throw new ValidationError("Invalid type. Use comment, test, or analysis.");
-  }
+    res.json({
+      data: results,
+      pagination: {
+        total,
+        limit,
+        offset,
+        hasMore: total > offset + limit
+      }
+    });
+  })
+);
 
-  const dateFilter = parseDateRange({ from, to });
-  const results = await historyService.getHistory({
-    type: type as 'comment' | 'test' | 'analysis',
-    ...dateFilter
-  });
-  res.json(results);
-}));
+router.get(
+  "/:type",
+  validateHistoryType,
+  validateDateRange,
+  asyncHandler(async (
+    req: Request<HistoryTypeParams, HistoryResponse, {}, DateRangeParams>,
+    res: Response<HistoryResponse>
+  ) => {
+    const { type } = req.params;
+    const { from, to } = req.query;
+    const dateFilter = parseDateRange({ from, to });
+    
+    const [results, total] = await Promise.all([
+      historyService.getHistory({
+        type: type as 'comment' | 'test' | 'analysis',
+        ...dateFilter
+      }),
+      historyService.getHistoryCount({
+        type: type as 'comment' | 'test' | 'analysis',
+        ...dateFilter
+      })
+    ]);
 
-router.get("/entry/:id", asyncHandler(async (
-  req: Request<{ id: string }>,
-  res: Response
-) => {
-  const { id } = req.params;
-  const entry = await historyService.getHistoryById(id);
-  
-  if (!entry) {
-    throw new NotFoundError(`History entry with ID ${id} not found`);
-  }
-  
-  res.json(entry);
-}));
+    const limit = 50;
+    const offset = 0;
+
+    res.json({
+      data: results,
+      pagination: {
+        total,
+        limit,
+        offset,
+        hasMore: total > offset + limit
+      }
+    });
+  })
+);
+
+router.get(
+  "/entry/:id",
+  validateHistoryId,
+  asyncHandler(async (
+    req: Request<HistoryIdParams, HistoryEntryResponse>,
+    res: Response<HistoryEntryResponse>
+  ) => {
+    const { id } = req.params;
+    const entry = await historyService.getHistoryById(id);
+    
+    if (!entry) {
+      throw new NotFoundError(`History entry with ID ${id} not found`);
+    }
+    
+    res.json(entry);
+  })
+);
 
 export default router;
