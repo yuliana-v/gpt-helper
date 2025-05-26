@@ -1,146 +1,97 @@
-import { Router } from "express";
-import { pool } from "../db/client";
+import { Router, Request, Response } from "express";
+import { historyService } from "../services/historyService";
+import { HistoryFilter } from "../db/models/HistoryModel";
+import { ValidationError, NotFoundError } from "../errors/AppError";
+import { asyncHandler } from "../middleware/errorHandler";
 
 const router = Router();
 
-router.get("/search", async (req, res) => {
+interface SearchQueryParams {
+  q?: string;
+  from?: string;
+  to?: string;
+}
+
+interface DateRangeQueryParams {
+  from?: string;
+  to?: string;
+}
+
+function parseDateRange(params: DateRangeQueryParams): Partial<HistoryFilter> {
+  const filter: Partial<HistoryFilter> = {};
+  
+  if (params.from) {
+    const fromDate = new Date(params.from);
+    if (isNaN(fromDate.getTime())) {
+      throw new ValidationError(`Invalid 'from' date: ${params.from}`);
+    }
+    filter.from = fromDate;
+  }
+  
+  if (params.to) {
+    const toDate = new Date(params.to);
+    if (isNaN(toDate.getTime())) {
+      throw new ValidationError(`Invalid 'to' date: ${params.to}`);
+    }
+    filter.to = toDate;
+  }
+  
+  return filter;
+}
+
+router.get("/search", asyncHandler(async (req: Request<{}, {}, {}, SearchQueryParams>, res: Response) => {
   const { q, from, to } = req.query;
 
   if (!q || typeof q !== "string" || q.trim().length < 2) {
-    return res.status(400).json({ error: "Query string 'q' is required and must be at least 2 characters." });
+    throw new ValidationError("Query string 'q' is required and must be at least 2 characters.");
   }
 
-  const filters = [
-    `(prompt ILIKE $1 OR input_code ILIKE $1 OR response ILIKE $1)`
-  ];
-  const values: any[] = [`%${q}%`];
-  let paramIndex = 2;
+  const dateFilter = parseDateRange({ from, to });
+  const results = await historyService.getHistory({
+    searchQuery: q,
+    ...dateFilter
+  });
+  res.json(results);
+}));
 
-  if (from) {
-    filters.push(`created_at >= $${paramIndex++}`);
-    values.push(from);
-  }
-
-  if (to) {
-    filters.push(`created_at <= $${paramIndex++}`);
-    values.push(to);
-  }
-
-  const whereClause = `WHERE ${filters.join(" AND ")}`;
-
-  try {
-    const result = await pool.query(
-      `
-      SELECT * FROM llm_history
-      ${whereClause}
-      ORDER BY created_at DESC
-      LIMIT 50
-      `,
-      values
-    );
-    res.json(result.rows);
-  } catch (err: any) {
-    console.error("❌ Search failed:", err.message);
-    res.status(500).json({ error: "Failed to search history." });
-  }
-});
-
-router.get("/", async (req, res) => {
+router.get("/", asyncHandler(async (req: Request<{}, {}, {}, DateRangeQueryParams>, res: Response) => {
   const { from, to } = req.query;
+  const dateFilter = parseDateRange({ from, to });
+  const results = await historyService.getHistory(dateFilter);
+  res.json(results);
+}));
 
-  const filters: string[] = [];
-  const values: any[] = [];
-  let paramIndex = 1;
-
-  if (from) {
-    filters.push(`created_at >= $${paramIndex++}`);
-    values.push(from);
-  }
-
-  if (to) {
-    filters.push(`created_at <= $${paramIndex++}`);
-    values.push(to);
-  }
-
-  const whereClause = filters.length > 0 ? `WHERE ${filters.join(" AND ")}` : "";
-
-  const query = `
-    SELECT * FROM llm_history
-    ${whereClause}
-    ORDER BY created_at DESC
-    LIMIT 50
-  `;
-
-  try {
-    const result = await pool.query(query, values);
-    res.json(result.rows);
-  } catch (err: any) {
-    console.error("❌ Failed to fetch filtered history:", err.message);
-    res.status(500).json({ error: "Failed to fetch history." });
-  }
-});
-
-router.get("/:type", async (req, res) => {
+router.get("/:type", asyncHandler(async (
+  req: Request<{ type: string }, {}, {}, DateRangeQueryParams>,
+  res: Response
+) => {
   const { type } = req.params;
   const { from, to } = req.query;
 
   if (!["comment", "test", "analysis"].includes(type)) {
-    return res.status(400).json({ error: "Invalid type. Use comment, test, or analysis." });
+    throw new ValidationError("Invalid type. Use comment, test, or analysis.");
   }
 
-  const filters = [`type = $1`];
-  const values: any[] = [type];
-  let paramIndex = 2;
+  const dateFilter = parseDateRange({ from, to });
+  const results = await historyService.getHistory({
+    type: type as 'comment' | 'test' | 'analysis',
+    ...dateFilter
+  });
+  res.json(results);
+}));
 
-  if (from) {
-    filters.push(`created_at >= $${paramIndex++}`);
-    values.push(from);
-  }
-
-  if (to) {
-    filters.push(`created_at <= $${paramIndex++}`);
-    values.push(to);
-  }
-
-  const whereClause = `WHERE ${filters.join(" AND ")}`;
-
-  try {
-    const result = await pool.query(
-      `
-      SELECT * FROM llm_history
-      ${whereClause}
-      ORDER BY created_at DESC
-      LIMIT 50
-      `,
-      values
-    );
-    res.json(result.rows);
-  } catch (err: any) {
-    console.error("❌ Failed to fetch filtered history:", err.message);
-    res.status(500).json({ error: "Failed to fetch filtered history" });
-  }
-});
-
-router.get("/entry/:id", async (req, res) => {
+router.get("/entry/:id", asyncHandler(async (
+  req: Request<{ id: string }>,
+  res: Response
+) => {
   const { id } = req.params;
-
-  if (!/^\d+$/.test(id)) {
-    return res.status(400).json({ error: "Invalid ID. Must be a numeric value." });
+  const entry = await historyService.getHistoryById(id);
+  
+  if (!entry) {
+    throw new NotFoundError(`History entry with ID ${id} not found`);
   }
-
-  try {
-    const result = await pool.query("SELECT * FROM llm_history WHERE id = $1", [id]);
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: "History entry not found." });
-    }
-
-    res.json(result.rows[0]);
-  } catch (err: any) {
-    console.error("❌ Failed to fetch history by ID:", err.message);
-    res.status(500).json({ error: "Failed to fetch history entry." });
-  }
-});
-
+  
+  res.json(entry);
+}));
 
 export default router;
