@@ -1,13 +1,40 @@
-📦 Stack
+Project Overview:
 
-React + TypeScript + Vite
+This is a full-stack TypeScript application, a GPT-powered code generation tool with the following features:
 
-Chakra UI
+**Key Features:**
 
-Firebase Auth (client + server)
+Code Generation: The application can generate code based on user prompts
 
-Axios + JWT auth header interceptor
+History Tracking: Users can view their generation history
 
+Offline Support: The frontend implements offline queuing of requests
+
+Authentication: Uses Firebase for user authentication
+
+Search Functionality: Includes a search feature for past generations
+
+📦 Architecture:
+
+**Frontend (client/):**
+
+Built with React + TypeScript
+
+Uses Vite as the build tool
+
+Implements Firebase Authentication
+
+Has offline support with request queuing
+
+Uses React Router for navigation
+
+Main pages: Home, History List, History Detail, and Search Results
+
+**Backend (server/):**
+
+Express.js server with TypeScript
+
+Docker support for containerization
 
 
 📘 API Endpoints
