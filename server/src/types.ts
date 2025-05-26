@@ -6,5 +6,6 @@ export interface GenerationRequest {
     functionName: string;
     model: string;
     type: "comment" | "test" | "analysis";
+    offline: false;
   }
   

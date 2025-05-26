@@ -17,6 +17,15 @@ import {
 import { useState } from 'react';
 import { api } from '../api/axios';
 
+const QUEUE_KEY = 'offline-logs';
+
+function queueOfflineEntry(entry: object) {
+  const queue = JSON.parse(localStorage.getItem(QUEUE_KEY) || '[]');
+  queue.push(entry);
+  localStorage.setItem(QUEUE_KEY, JSON.stringify(queue));
+}
+
+
 export default function Home() {
   const [prompt, setPrompt] = useState('');
   const [code, setCode] = useState('');
@@ -40,26 +49,28 @@ export default function Home() {
     }
 
     setLoading(true);
-    try {
-      const res = await api.post('/generate', {
+    const payload = {
         prompt,
         code,
         module: 'demo',
         functionName: 'demoFunction',
         type,
         model
-      });
-
+      };
+    try {
+      const res = await api.post('/generate', payload);
       setResponse(res.data.result || '');
     } catch (err) {
-      toast({
-        title: 'Error',
-        description: 'Generation failed. Check the backend.',
-        status: 'error',
-        duration: 3000,
-        isClosable: true,
-      });
+    //   toast({
+    //     title: 'Error',
+    //     description: 'Generation failed. Check the backend.',
+    //     status: 'error',
+    //     duration: 3000,
+    //     isClosable: true,
+    //   });
+      console.warn('❌ Offline or backend failed, queueing...');
       console.log(err);
+      queueOfflineEntry(payload);
     } finally {
       setLoading(false);
     }

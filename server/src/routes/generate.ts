@@ -10,12 +10,13 @@ const router = Router();
 router.post("/", verifyFirebaseToken, async (req, res) => {
   console.log("user:", req);
   const data = req.body as GenerationRequest;
-  const { user, ...rest } = data;
+  const { user, offline, ...rest } = data;
   const userId = (req as any).user?.uid;
 
   try {
     const result = await generateWithOllama(data.prompt, data.code, data.model, data.user);
-    await logHistory({ user: userId, ...rest, result });
+
+    await logHistory({ user: userId, offline: offline || false, ...rest, result });
     res.json({ result });
   } catch (error) {
     console.error("Generation failed:", error);

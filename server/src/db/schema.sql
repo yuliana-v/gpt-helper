@@ -8,5 +8,6 @@ CREATE TABLE IF NOT EXISTS llm_history (
   function_name TEXT,
   type TEXT,
   response TEXT,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  offline BOOLEAN DEFAULT false
 );
