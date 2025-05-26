@@ -7,6 +7,7 @@ import {
   Select,
   Table,
   Tbody,
+  Text,
   Td,
   Th,
   Thead,
@@ -48,7 +49,7 @@ export default function HistoryList() {
         if (to) params.to = to;
 
         const res = await api.get('/history', { params });
-        setData(res.data);
+        setData(res.data.data);
     } catch (err) {
         console.error(err);
     } finally {
@@ -87,7 +88,9 @@ export default function HistoryList() {
         </Button>
       </HStack>
 
-     {loading ? <Spinner /> : ( <Table variant="simple">
+     {!loading && data.length === 0 ? (
+        <Text>No results yet. Try searching above.</Text>
+      ) : (loading ? <Spinner /> : ( <Table variant="simple">
         <Thead>
           <Tr>
             <Th>ID</Th>
@@ -99,7 +102,7 @@ export default function HistoryList() {
           </Tr>
         </Thead>
         <Tbody>
-          {data.map((entry) => (
+          {Array.isArray(data) && data?.map((entry) => (
             <Tr key={entry.id}>
               <Td>{entry.id}</Td>
               <Td>{entry.user_id}</Td>
@@ -115,7 +118,7 @@ export default function HistoryList() {
           ))}
         </Tbody>
       </Table>
-    )}
+    ))}
     </Box>
   );
 }

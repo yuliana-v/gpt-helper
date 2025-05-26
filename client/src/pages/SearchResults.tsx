@@ -49,7 +49,7 @@ export default function SearchResults() {
     setLoading(true);
     try {
         const res = await api.get('/history/search', { params });
-        setResults(res.data);
+        setResults(res.data.data);
     } catch (err) {
         console.error(err);
     } finally {
